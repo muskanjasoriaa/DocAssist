@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+env/
+venv/
+ENV/
+
+# Database & Storage
+*.db
+*.sqlite3
+uploads/
+vector_store.json
+
+# Environment Variables & Secrets
+.env
+.env.*
+
+# OS files
+.DS_Store
+Thumbs.db

@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF Chat AI - Smart RAG Assistant</title>
+    <!-- Google Fonts: Outfit -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <i class="fa-solid fa-brain-circuit logo-icon"></i>
+                    <h2>PDF Chat <span class="accent-text">AI</span></h2>
+                </div>
+            </div>
+
+            <!-- Upload Area -->
+            <div class="upload-section">
+                <h3>Upload Document</h3>
+                <div class="drag-drop-zone" id="dropZone">
+                    <i class="fa-solid fa-cloud-arrow-up upload-icon"></i>
+                    <p>Drag & Drop your PDF here</p>
+                    <span>or</span>
+                    <button class="btn btn-secondary" id="browseBtn">
+                        <i class="fa-solid fa-folder-open"></i> Browse File
+                    </button>
+                    <input type="file" id="fileInput" accept=".pdf" style="display: none;">
+                </div>
+                <div class="upload-progress-container" id="uploadProgress" style="display: none;">
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progressFill"></div>
+                    </div>
+                    <span id="uploadStatusText">Uploading...</span>
+                </div>
+            </div>
+
+            <!-- Documents List -->
+            <div class="documents-section">
+                <h3>My Library</h3>
+                <div class="document-list" id="documentList">
+                    <!-- Loaded dynamically -->
+                    <div class="no-docs-message">
+                        <i class="fa-regular fa-file-pdf"></i>
+                        <p>No documents uploaded yet.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Sidebar Footer -->
+            <div class="sidebar-footer">
+                <div class="api-status">
+                    <i class="fa-solid fa-circle-nodes status-dot active" id="apiStatusDot"></i>
+                    <span id="apiStatusText">Local RAG Server Active</span>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Chat Area -->
+        <main class="chat-area">
+            <!-- Active Document Header -->
+            <header class="chat-header">
+                <div class="active-doc-info">
+                    <i class="fa-regular fa-file-pdf active-doc-icon"></i>
+                    <div>
+                        <h2 id="activeDocTitle">Select a document to begin chat</h2>
+                        <p id="activeDocSub">Upload a PDF in the sidebar and click on it to start asking questions.</p>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Messages Window -->
+            <div class="messages-container" id="messagesContainer">
+                <!-- Welcome Message -->
+                <div class="welcome-box" id="welcomeBox">
+                    <i class="fa-solid fa-message-sparkles welcome-icon"></i>
+                    <h1>Ask anything about your PDF</h1>
+                    <p>This AI chatbot searches your uploaded PDF and answers questions with precise context. To begin, upload a document or select an existing one from the library.</p>
+                    <div class="features-grid">
+                        <div class="feature-card">
+                            <i class="fa-solid fa-magnifying-glass"></i>
+                            <h4>Semantic Search</h4>
+                            <p>Scans the PDF to find the exact pages matching your question.</p>
+                        </div>
+                        <div class="feature-card">
+                            <i class="fa-solid fa-bolt"></i>
+                            <h4>Fast Responses</h4>
+                            <p>Uses Gemini 1.5 Flash to provide answers in seconds.</p>
+                        </div>
+                        <div class="feature-card">
+                            <i class="fa-solid fa-shield-halved"></i>
+                            <h4>Private & Secure</h4>
+                            <p>Data is stored locally on your machine in a SQLite database.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Input Bar -->
+            <footer class="chat-input-container">
+                <form id="chatForm" class="chat-input-form">
+                    <input type="text" id="queryInput" placeholder="Ask a question about this document..." autocomplete="off" disabled>
+                    <button type="submit" class="btn btn-primary btn-send" id="sendBtn" disabled>
+                        <i class="fa-solid fa-paper-plane"></i>
+                    </button>
+                </form>
+            </footer>
+        </main>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
