@@ -1,0 +1,8 @@
+fastapi
+uvicorn
+sqlalchemy
+pypdf
+google-generativeai
+python-multipart
+pymupdf
+streamlit
