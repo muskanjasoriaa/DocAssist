@@ -1,43 +1,62 @@
 import streamlit as st
 import os
 import math
-import json
 import fitz  # PyMuPDF
 import google.generativeai as genai
-from typing import List, Dict, Any
+from typing import List
 
-# 1. Page Configuration & Title
-st.set_page_config(page_title="DocAssist - Chat with PDF", page_icon="📄", layout="wide")
+# 1. Page Configuration
+st.set_page_config(page_title="Ask your PDF", page_icon="💬", layout="centered")
 
-# Custom CSS for premium styling
+# Custom CSS to force a clean light theme matching the image
 st.markdown("""
 <style>
-    .main {
-        background-color: #0B0F19;
-        color: #F3F4F6;
-    }
+    /* Main background */
     .stApp {
-        background-color: #0B0F19;
+        background-color: #FFFFFF !important;
+        color: #1F2937 !important;
     }
-    .stSidebar {
-        background-color: #111827 !important;
-        border-right: 1px solid rgba(255, 255, 255, 0.08);
+    
+    /* Text colors */
+    h1, h2, h3, p, label, .stMarkdown {
+        color: #1F2937 !important;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     }
-    h1, h2, h3 {
-        color: #FFFFFF !important;
-        font-family: 'Outfit', sans-serif;
+    
+    /* Title styling */
+    h1 {
+        font-size: 2.2rem !important;
+        font-weight: 700 !important;
+        margin-bottom: 0.5rem !important;
     }
-    .accent-text {
-        color: #6366F1;
-        text-shadow: 0 0 10px rgba(99, 102, 241, 0.35);
+    
+    /* File uploader container */
+    div[data-testid="stFileUploader"] {
+        background-color: #F8FAFC !important;
+        border: 1px solid #E2E8F0 !important;
+        border-radius: 8px !important;
+        padding: 10px !important;
     }
-    /* Chat message formatting */
-    .stChatMessage {
-        background-color: rgba(255, 255, 255, 0.02) !important;
-        border: 1px solid rgba(255, 255, 255, 0.05) !important;
-        border-radius: 12px;
-        padding: 12px;
-        margin-bottom: 12px;
+    
+    /* Hide the default sidebar to match the layout in the image */
+    [data-testid="sidebar-content"] {
+        display: none;
+    }
+    
+    /* Input box styling */
+    .stTextInput input {
+        background-color: #F8FAFC !important;
+        border: 1px solid #E2E8F0 !important;
+        color: #1F2937 !important;
+        border-radius: 6px !important;
+    }
+    
+    /* Answer box spacing */
+    .answer-box {
+        margin-top: 1.5rem;
+        font-size: 1.05rem;
+        line-height: 1.6;
+        color: #1F2937;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -49,36 +68,23 @@ if "GEMINI_API_KEY" in st.secrets:
 elif "gemini_api_key" in st.session_state:
     api_key = st.session_state["gemini_api_key"]
 
-# Sidebar configuration
-with st.sidebar:
-    st.markdown("# 📄 DocAssist <span class='accent-text'>AI</span>", unsafe_allow_html=True)
-    st.write("Smart RAG Document Assistant")
-    st.write("---")
-    
-    # API Key Input if not in secrets
-    if not api_key:
-        input_key = st.text_input("Enter your Gemini API Key:", type="password")
-        if input_key:
-            st.session_state["gemini_api_key"] = input_key
-            api_key = input_key
-            st.rerun()
-        st.info("💡 You can get a free key from [Google AI Studio](https://aistudio.google.com/)")
-    else:
-        st.success("✅ Gemini API Connected")
-        
-    st.write("---")
+# Expandable API Key configuration at the top of the page
+with st.expander("🔑 Configure Gemini API Key", expanded=not bool(api_key)):
+    input_key = st.text_input("Enter your Gemini API Key:", type="password", value=api_key)
+    if input_key:
+        st.session_state["gemini_api_key"] = input_key
+        api_key = input_key
+        st.success("API Key saved!")
 
-# Configure genai SDK if key is set
 if api_key:
     genai.configure(api_key=api_key)
 
-# 3. Local Vector Store logic
-class LocalVectorStore:
+# 3. Vector Database Logic (in-memory session state)
+class SessionVectorStore:
     def __init__(self):
-        # We store the vectors in Streamlit session state so they persist during the session
-        if "vector_store" not in st.session_state:
-            st.session_state["vector_store"] = {}
-        self.store = st.session_state["vector_store"]
+        if "vectors" not in st.session_state:
+            st.session_state["vectors"] = {}
+        self.store = st.session_state["vectors"]
 
     def _get_embedding(self, text: str) -> List[float]:
         if api_key:
@@ -92,10 +98,10 @@ class LocalVectorStore:
                     return response['embedding']
                 elif isinstance(response, dict) and 'embedding' in response.get('embedding', {}):
                     return response['embedding']['values']
-            except Exception as e:
-                pass # Fallback to mock
+            except Exception:
+                pass
 
-        # Fallback Mock Embedding
+        # Mock vector fallback for offline/demo mode
         mock_vector = [0.0] * 128
         for char in text:
             idx = ord(char) % 128
@@ -110,12 +116,11 @@ class LocalVectorStore:
         for idx, chunk in enumerate(chunks):
             vector = self._get_embedding(chunk)
             doc_data.append({
-                "chunk_id": idx,
                 "text": chunk,
                 "vector": vector
             })
         self.store[doc_name] = doc_data
-        st.session_state["vector_store"] = self.store
+        st.session_state["vectors"] = self.store
 
     def search(self, doc_name: str, query: str, top_k: int = 3) -> List[str]:
         if doc_name not in self.store:
@@ -140,11 +145,10 @@ class LocalVectorStore:
         results.sort(key=lambda x: x[0], reverse=True)
         return [text for sim, text in results[:top_k]]
 
-vector_db = LocalVectorStore()
+vector_db = SessionVectorStore()
 
-# 4. Integrated PyMuPDF (fitz) text extractor (user's code)
+# 4. PyMuPDF (fitz) text extractor (user's code)
 def extract_chunks(uploaded_file, chunk_size: int = 500, overlap: int = 50) -> List[str]:
-    # Read PyMuPDF document from file bytes
     file_bytes = uploaded_file.read()
     doc = fitz.open(stream=file_bytes, filetype="pdf")
     full_text = ""
@@ -165,69 +169,37 @@ def extract_chunks(uploaded_file, chunk_size: int = 500, overlap: int = 50) -> L
 
     return chunks
 
-# 5. Document Upload Section (Sidebar)
-with st.sidebar:
-    st.write("### Upload Document")
-    uploaded_file = st.file_uploader("Upload a PDF file:", type="pdf")
-    
-    if uploaded_file:
-        doc_name = uploaded_file.name
-        if doc_name not in vector_db.store:
-            with st.spinner("Processing PDF and generating embeddings..."):
-                try:
-                    chunks = extract_chunks(uploaded_file)
-                    if chunks:
-                        vector_db.add_document(doc_name, chunks)
-                        st.success(f"Processed: {doc_name}")
-                    else:
-                        st.error("No readable text found in this PDF.")
-                except Exception as e:
-                    st.error(f"Error processing PDF: {e}")
+# 5. UI Elements matching the layout in the image
+st.markdown("<h1>Ask your PDF 💬</h1>", unsafe_allow_html=True)
 
-    # Library selector
-    st.write("---")
-    st.write("### Select Active Document")
-    doc_options = list(vector_db.store.keys())
-    
-    if doc_options:
-        selected_doc = st.selectbox("Select document to chat with:", doc_options)
-        st.session_state["selected_doc"] = selected_doc
+# Upload Section
+uploaded_file = st.file_uploader("Upload your PDF", type="pdf", label_visibility="visible")
+
+active_doc_name = None
+if uploaded_file:
+    active_doc_name = uploaded_file.name
+    if active_doc_name not in vector_db.store:
+        with st.spinner("Processing PDF..."):
+            chunks = extract_chunks(uploaded_file)
+            if chunks:
+                vector_db.add_document(active_doc_name, chunks)
+                st.success("PDF processed successfully!")
+            else:
+                st.error("No readable text found in this PDF.")
+
+# Ask Question Section
+user_query = st.text_input("Ask a question about your PDF:", placeholder="Enter your question here...")
+
+if user_query:
+    if not active_doc_name:
+        st.warning("Please upload a PDF document first.")
     else:
-        st.session_state["selected_doc"] = None
-        st.info("Upload a PDF to start.")
-
-# 6. Chat Interface
-selected_doc = st.session_state.get("selected_doc")
-
-if selected_doc:
-    st.markdown(f"## Chatting with: <span class='accent-text'>{selected_doc}</span>", unsafe_allow_html=True)
-    
-    # Initialize chat history
-    history_key = f"chat_history_{selected_doc}"
-    if history_key not in st.session_state:
-        st.session_state[history_key] = []
-        
-    # Render chat history
-    for msg in st.session_state[history_key]:
-        with st.chat_message(msg["role"]):
-            st.write(msg["content"])
-            
-    # User Query Input
-    if user_query := st.chat_input("Ask a question about this document..."):
-        # Display user message
-        with st.chat_message("user"):
-            st.write(user_query)
-        st.session_state[history_key].append({"role": "user", "content": user_query})
-        
-        # Call RAG with Gemini
-        with st.spinner("Searching document & generating answer..."):
-            # 1. Retrieve top matching chunks
-            chunks = vector_db.search(selected_doc, user_query, top_k=3)
+        with st.spinner("Analyzing..."):
+            chunks = vector_db.search(active_doc_name, user_query, top_k=3)
             
             if chunks:
                 context = "\n---\n".join(chunks)
                 
-                # 2. Call Gemini
                 if api_key:
                     model_names = ["gemini-1.5-flash", "gemini-pro", "gemini-2.5-flash"]
                     answer = ""
@@ -245,31 +217,20 @@ if selected_doc:
                             if response:
                                 answer = response.text
                                 break
-                        except Exception as e:
+                        except Exception:
                             pass
                     
                     if not answer:
-                        answer = "⚠️ Could not connect to Gemini API. Please check your API key."
+                        answer = "⚠️ Could not connect to Gemini API. Please verify your API key."
                 else:
-                    # Demo fallback output
-                    answer = "⚠️ **DEMO MODE (No API Key set)**\n\nHere are the top matches found in your PDF:\n\n"
+                    # Demo Mode Fallback
+                    answer = "⚠️ **DEMO MODE (No API Key configured)**\n\nHere are the top matching text chunks found in your document:\n\n"
                     for idx, chunk in enumerate(chunks):
                         clean_chunk = chunk.replace("\n", " ")
                         answer += f"**Match {idx + 1}:**\n> ... {clean_chunk[:300]} ...\n\n"
-                    answer += "*Enter a Gemini API Key in the sidebar to enable full answers.*"
+                    answer += "*Enter a Gemini API Key at the top of the page to generate full AI answers.*"
             else:
-                answer = "Could not find any matching text in the document."
-                
-            # Display assistant message
-            with st.chat_message("assistant"):
-                st.write(answer)
-            st.session_state[history_key].append({"role": "assistant", "content": answer})
-
-else:
-    # Welcome display when no document is active
-    st.markdown("""
-    <div style='text-align: center; margin-top: 100px;'>
-        <h1 style='font-size: 40px;'>Welcome to <span class='accent-text'>DocAssist AI</span></h1>
-        <p style='color: #9CA3AF; font-size: 18px;'>Upload a PDF in the sidebar and enter your Gemini API Key to start chatting with your documents.</p>
-    </div>
-    """, unsafe_allow_html=True)
+                answer = "No matching text could be found in the document."
+            
+            # Display Answer exactly as in the image layout
+            st.markdown(f"<div class='answer-box'><strong>Answer:</strong> {answer}</div>", unsafe_allow_html=True)
