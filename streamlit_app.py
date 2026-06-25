@@ -3,60 +3,103 @@ import os
 import math
 import fitz  # PyMuPDF
 import google.generativeai as genai
-from typing import List
+from typing import List, Dict, Any
 
 # 1. Page Configuration
-st.set_page_config(page_title="Ask your PDF", page_icon="💬", layout="centered")
+st.set_page_config(page_title="DocAssist - Chat with PDF", page_icon="📄", layout="wide")
 
-# Custom CSS to force a clean light theme matching the image
+# Custom CSS for Premium Dark theme with Library Sidebar & Chat Window
 st.markdown("""
 <style>
-    /* Main background */
+    /* App background */
     .stApp {
-        background-color: #FFFFFF !important;
-        color: #1F2937 !important;
+        background-color: #0B0F19 !important;
+        color: #F3F4F6 !important;
     }
     
-    /* Text colors */
-    h1, h2, h3, p, label, .stMarkdown {
-        color: #1F2937 !important;
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    }
-    
-    /* Title styling */
-    h1 {
-        font-size: 2.2rem !important;
-        font-weight: 700 !important;
-        margin-bottom: 0.5rem !important;
-    }
-    
-    /* File uploader container */
-    div[data-testid="stFileUploader"] {
-        background-color: #F8FAFC !important;
-        border: 1px solid #E2E8F0 !important;
-        border-radius: 8px !important;
-        padding: 10px !important;
-    }
-    
-    /* Hide the default sidebar to match the layout in the image */
+    /* Sidebar styling */
     [data-testid="sidebar-content"] {
-        display: none;
+        background-color: #111827 !important;
+        border-right: 1px solid rgba(255, 255, 255, 0.08) !important;
+        padding-top: 20px !important;
     }
     
-    /* Input box styling */
-    .stTextInput input {
-        background-color: #F8FAFC !important;
-        border: 1px solid #E2E8F0 !important;
-        color: #1F2937 !important;
+    /* Sidebar header */
+    .sidebar-logo {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 24px;
+    }
+    
+    .accent-text {
+        color: #6366F1;
+        text-shadow: 0 0 10px rgba(99, 102, 241, 0.35);
+    }
+    
+    /* Text styling */
+    h1, h2, h3, p, label, span, .stMarkdown {
+        color: #F3F4F6 !important;
+        font-family: 'Outfit', sans-serif;
+    }
+    
+    /* Feature Welcome Box */
+    .welcome-box {
+        max-width: 700px;
+        margin: 40px auto;
+        text-align: center;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 16px;
+    }
+    
+    .features-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 16px;
+        margin-top: 24px;
+        width: 100%;
+    }
+    
+    .feature-card {
+        background: rgba(255, 255, 255, 0.02);
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        padding: 20px 14px;
+        border-radius: 12px;
+        text-align: center;
+    }
+    
+    .feature-card h4 {
+        margin-top: 8px;
+        font-size: 14px;
+        font-weight: 600;
+    }
+    
+    .feature-card p {
+        font-size: 11px;
+        color: #9CA3AF !important;
+        line-height: 1.4;
+    }
+    
+    /* Chat bubbles */
+    .stChatMessage {
+        background-color: rgba(255, 255, 255, 0.03) !important;
+        border: 1px solid rgba(255, 255, 255, 0.05) !important;
+        border-radius: 12px;
+        padding: 12px;
+        margin-bottom: 12px;
+    }
+    
+    /* Buttons */
+    .stButton button {
+        background-color: #4F46E5 !important;
+        color: white !important;
+        border: none !important;
         border-radius: 6px !important;
     }
-    
-    /* Answer box spacing */
-    .answer-box {
-        margin-top: 1.5rem;
-        font-size: 1.05rem;
-        line-height: 1.6;
-        color: #1F2937;
+    .stButton button:hover {
+        background-color: #6366F1 !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -68,13 +111,24 @@ if "GEMINI_API_KEY" in st.secrets:
 elif "gemini_api_key" in st.session_state:
     api_key = st.session_state["gemini_api_key"]
 
-# Expandable API Key configuration at the top of the page
-with st.expander("🔑 Configure Gemini API Key", expanded=not bool(api_key)):
-    input_key = st.text_input("Enter your Gemini API Key:", type="password", value=api_key)
-    if input_key:
-        st.session_state["gemini_api_key"] = input_key
-        api_key = input_key
-        st.success("API Key saved!")
+# Sidebar configuration (Admin Dashboard)
+with st.sidebar:
+    st.markdown("<h2>📄 DocAssist <span class='accent-text'>AI</span></h2>", unsafe_allow_html=True)
+    st.write("Smart RAG Document Assistant")
+    st.write("---")
+    
+    # API Key Input
+    if not api_key:
+        input_key = st.text_input("Enter your Gemini API Key:", type="password")
+        if input_key:
+            st.session_state["gemini_api_key"] = input_key
+            api_key = input_key
+            st.rerun()
+        st.info("💡 You can get a free key from [Google AI Studio](https://aistudio.google.com/)")
+    else:
+        st.success("✅ Gemini API Connected")
+        
+    st.write("---")
 
 if api_key:
     genai.configure(api_key=api_key)
@@ -101,7 +155,7 @@ class SessionVectorStore:
             except Exception:
                 pass
 
-        # Mock vector fallback for offline/demo mode
+        # Mock vector fallback
         mock_vector = [0.0] * 128
         for char in text:
             idx = ord(char) % 128
@@ -169,33 +223,62 @@ def extract_chunks(uploaded_file, chunk_size: int = 500, overlap: int = 50) -> L
 
     return chunks
 
-# 5. UI Elements matching the layout in the image
-st.markdown("<h1>Ask your PDF 💬</h1>", unsafe_allow_html=True)
+# 5. Sidebar Document Upload & Selector (Admin Dashboard)
+with st.sidebar:
+    st.write("### Upload Document")
+    uploaded_file = st.file_uploader("Upload a PDF file:", type="pdf", label_visibility="collapsed")
+    
+    if uploaded_file:
+        doc_name = uploaded_file.name
+        if doc_name not in vector_db.store:
+            with st.spinner("Processing PDF..."):
+                try:
+                    chunks = extract_chunks(uploaded_file)
+                    if chunks:
+                        vector_db.add_document(doc_name, chunks)
+                        st.success(f"Processed: {doc_name}")
+                    else:
+                        st.error("No text found in PDF.")
+                except Exception as e:
+                    st.error(f"Error: {e}")
 
-# Upload Section
-uploaded_file = st.file_uploader("Upload your PDF", type="pdf", label_visibility="visible")
-
-active_doc_name = None
-if uploaded_file:
-    active_doc_name = uploaded_file.name
-    if active_doc_name not in vector_db.store:
-        with st.spinner("Processing PDF..."):
-            chunks = extract_chunks(uploaded_file)
-            if chunks:
-                vector_db.add_document(active_doc_name, chunks)
-                st.success("PDF processed successfully!")
-            else:
-                st.error("No readable text found in this PDF.")
-
-# Ask Question Section
-user_query = st.text_input("Ask a question about your PDF:", placeholder="Enter your question here...")
-
-if user_query:
-    if not active_doc_name:
-        st.warning("Please upload a PDF document first.")
+    # Document list selection
+    st.write("---")
+    st.write("### My Library")
+    doc_options = list(vector_db.store.keys())
+    
+    if doc_options:
+        selected_doc = st.selectbox("Active Document:", doc_options)
+        st.session_state["selected_doc"] = selected_doc
     else:
-        with st.spinner("Analyzing..."):
-            chunks = vector_db.search(active_doc_name, user_query, top_k=3)
+        st.session_state["selected_doc"] = None
+        st.info("Upload a PDF above to begin.")
+
+# 6. Main Chat View (User Dashboard)
+selected_doc = st.session_state.get("selected_doc")
+
+if selected_doc:
+    st.markdown(f"## Chatting with: <span class='accent-text'>{selected_doc}</span>", unsafe_allow_html=True)
+    st.write("---")
+    
+    # Initialize history
+    history_key = f"chat_history_{selected_doc}"
+    if history_key not in st.session_state:
+        st.session_state[history_key] = []
+        
+    # Render messages
+    for msg in st.session_state[history_key]:
+        with st.chat_message(msg["role"]):
+            st.write(msg["content"])
+            
+    # Input field
+    if user_query := st.chat_input("Ask a question about this document..."):
+        with st.chat_message("user"):
+            st.write(user_query)
+        st.session_state[history_key].append({"role": "user", "content": user_query})
+        
+        with st.spinner("Analyzing document..."):
+            chunks = vector_db.search(selected_doc, user_query, top_k=3)
             
             if chunks:
                 context = "\n---\n".join(chunks)
@@ -221,16 +304,48 @@ if user_query:
                             pass
                     
                     if not answer:
-                        answer = "⚠️ Could not connect to Gemini API. Please verify your API key."
+                        answer = "⚠️ Could not connect to Gemini API. Please check your API key."
                 else:
-                    # Demo Mode Fallback
-                    answer = "⚠️ **DEMO MODE (No API Key configured)**\n\nHere are the top matching text chunks found in your document:\n\n"
+                    # Demo Mode
+                    answer = "⚠️ **DEMO MODE (No API Key set)**\n\nHere are the top matches found in your PDF:\n\n"
                     for idx, chunk in enumerate(chunks):
                         clean_chunk = chunk.replace("\n", " ")
                         answer += f"**Match {idx + 1}:**\n> ... {clean_chunk[:300]} ...\n\n"
-                    answer += "*Enter a Gemini API Key at the top of the page to generate full AI answers.*"
+                    answer += "*Enter a Gemini API Key in the sidebar to enable full answers.*"
             else:
-                answer = "No matching text could be found in the document."
-            
-            # Display Answer exactly as in the image layout
-            st.markdown(f"<div class='answer-box'><strong>Answer:</strong> {answer}</div>", unsafe_allow_html=True)
+                answer = "No matching text could be found."
+                
+            with st.chat_message("assistant"):
+                st.write(answer)
+            st.session_state[history_key].append({"role": "assistant", "content": answer})
+
+else:
+    # Beautiful welcome page on first load
+    st.markdown("""
+    <div class="welcome-box">
+        <h1 style="font-size: 38px;">Ask anything about your PDF</h1>
+        <p style="color: #9CA3AF; font-size: 15px; max-width: 500px;">
+            This RAG-based assistant splits, stores, and searches your document text using local semantic vectors and Gemini AI.
+        </p>
+        <div class="features-grid">
+            <div class="feature-card">
+                <h3 style="font-size: 24px;">🔍</h3>
+                <h4>Semantic Search</h4>
+                <p>Scans the PDF to locate sections matching your query.</p>
+            </div>
+            <div class="feature-card">
+                <h3 style="font-size: 24px;">⚡</h3>
+                <h4>Fast Responses</h4>
+                <p>Uses Gemini 1.5 Flash to provide answers in seconds.</p>
+            </div>
+            <div class="feature-card">
+                <h3 style="font-size: 24px;">🛡️</h3>
+                <h4>Secure & Private</h4>
+                <p>All embeddings and search operations run in memory.</p>
+            </div>
+        </div>
+        <p style="margin-top: 40px; color: #6366F1; font-weight: 500;">
+            ⬅️ Upload a PDF in the sidebar to begin!
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
